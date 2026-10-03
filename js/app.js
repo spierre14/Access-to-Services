@@ -385,11 +385,12 @@ async function showSelection(key) {
   } else {
     await showService(key);
   }
+  await resetLocationsFor(key);
+  buildToggleList(key);
 }
 
 map.on('load', () => {
   showSelection('combined');
-  buildToggleList();
 });
 
 // ============================================================
@@ -400,10 +401,19 @@ document.getElementById('serviceSelect').addEventListener('change', (e) => {
 });
 
 // ============================================================
-// Location toggles -- independent of the dropdown, all off by default.
-// Each service gets its own checkbox; Park toggles the polygon layer,
-// every other service toggles into/out of a shared point layer filtered
-// by amenity value (each point already carries its own service color).
+// Location toggles.
+// - When "Combined" is selected: every service gets its own checkbox,
+//   all off by default, fully independent -- layer any combination of
+//   services' locations on top of the combined choropleth.
+// - When a single service is selected from the dropdown: the toggle
+//   panel narrows to just that one service, switched ON automatically
+//   so its locations (or park polygon) show right away -- you can only
+//   toggle that one service off/back on while viewing it. Picking a
+//   different service (or switching back to Combined) clears it and
+//   starts fresh.
+// Park toggles the polygon layer; every other service toggles into/out
+// of a shared point layer filtered by amenity value (each point already
+// carries its own service color).
 // ============================================================
 const activeAmenities = new Set();
 
@@ -441,14 +451,36 @@ async function setAmenityToggle(key, on) {
   updateAmenitiesLayer();
 }
 
-function buildToggleList() {
+// Clears every location layer, then -- if a single service (not
+// Combined) was just selected -- automatically switches that one
+// service's locations on.
+async function resetLocationsFor(key) {
+  activeAmenities.clear();
+  updateAmenitiesLayer();
+  await setParkToggle(false);
+
+  if (key !== 'combined') {
+    const svc = SERVICES[key];
+    if (svc.isPark) {
+      await setParkToggle(true);
+    } else {
+      await setAmenityToggle(key, true);
+    }
+  }
+}
+
+function buildToggleList(selectedKey) {
   const listEl = document.getElementById('toggleList');
-  listEl.innerHTML = Object.entries(SERVICES).map(([key, svc]) => {
+  const isSingle = selectedKey !== 'combined';
+  const entries = isSingle ? [[selectedKey, SERVICES[selectedKey]]] : Object.entries(SERVICES);
+
+  listEl.innerHTML = entries.map(([key, svc]) => {
     const color = svc.isPark ? svc.polygonColor : svc.pointColor;
     const shape = svc.isPark ? 'square' : '';
+    const checked = isSingle ? 'checked' : '';
     return `
       <label class="toggle-row">
-        <input type="checkbox" data-key="${key}">
+        <input type="checkbox" data-key="${key}" ${checked}>
         <span class="toggle-swatch ${shape}" style="background:${color};"></span>
         <span>${svc.label}</span>
       </label>
